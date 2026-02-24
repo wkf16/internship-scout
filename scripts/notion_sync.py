@@ -142,38 +142,66 @@ async def notion_req(session: aiohttp.ClientSession, method: str,
 # ── YAML helpers ──────────────────────────────────────────────────────────────
 
 def parse_yaml(path: Path) -> list[dict]:
-    text = path.read_text()
+    try:
+        import yaml as _yaml
+        raw = _yaml.safe_load(path.read_text())
+    except ImportError:
+        raw = None
+
+    if raw is None:
+        # fallback: try ruamel or plain regex
+        raw = None
+
+    # Support both top-level list and {"internships": [...]}
+    if isinstance(raw, dict):
+        for key in ("internships", "jobs", "entries"):
+            if key in raw and isinstance(raw[key], list):
+                raw = raw[key]
+                break
+        else:
+            raw = list(raw.values())[0] if raw else []
+
+    if not isinstance(raw, list):
+        return []
+
     entries = []
-    for block in re.split(r"\n  - title:", text)[1:]:
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
         e = {}
-        for f in ["title", "company", "salary", "location", "company_size",
+        for f in ["company", "salary", "location", "company_size",
                   "funding_stage", "jd_summary", "url", "source", "status",
                   "jd_quality", "collected_at", "notion_page_id"]:
-            m = re.search(rf'{f}:\s*"([^"]*)"', block)
-            e[f] = m.group(1) if m else ""
-        tm = re.search(r"tags:\s*\[([^\]]*)\]", block)
-        e["tags"] = [t.strip().strip('"') for t in tm.group(1).split(",")
-                     if t.strip().strip('"')] if tm else []
+            val = item.get(f, "")
+            e[f] = str(val) if val is not None else ""
+        tags = item.get("tags", [])
+        if isinstance(tags, list):
+            e["tags"] = [str(t) for t in tags if t]
+        elif isinstance(tags, str):
+            e["tags"] = [t.strip() for t in tags.split(",") if t.strip()]
+        else:
+            e["tags"] = []
         entries.append(e)
     return entries
 
 def clear_notion_ids(path: Path):
-    text = path.read_text()
-    text = re.sub(r'notion_page_id:\s*"[^"]*"', 'notion_page_id: ""', text)
-    path.write_text(text)
+    import yaml as _yaml
+    raw = _yaml.safe_load(path.read_text())
+    lst = raw["internships"] if isinstance(raw, dict) and "internships" in raw else raw
+    for item in lst:
+        if isinstance(item, dict):
+            item["notion_page_id"] = ""
+    path.write_text(_yaml.dump(raw, allow_unicode=True, sort_keys=False))
 
 def write_notion_id(path: Path, url: str, notion_id: str):
-    text = path.read_text()
-    url_esc = re.escape(url)
-    if "notion_page_id:" in text:
-        text = re.sub(
-            rf'(url:\s*"{url_esc}".*?notion_page_id:\s*)"[^"]*"',
-            rf'\g<1>"{notion_id}"', text, count=1, flags=re.DOTALL)
-    else:
-        text = re.sub(
-            rf'(url:\s*"{url_esc}")',
-            rf'\1\n    notion_page_id: "{notion_id}"', text, count=1)
-    path.write_text(text)
+    import yaml as _yaml
+    raw = _yaml.safe_load(path.read_text())
+    lst = raw["internships"] if isinstance(raw, dict) and "internships" in raw else raw
+    for item in lst:
+        if isinstance(item, dict) and item.get("url") == url:
+            item["notion_page_id"] = notion_id
+            break
+    path.write_text(_yaml.dump(raw, allow_unicode=True, sort_keys=False))
 
 # ── Property builder ──────────────────────────────────────────────────────────
 
