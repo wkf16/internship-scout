@@ -55,6 +55,14 @@ If no → skip all Notion steps.
 
 ---
 
+## 初始化（每次跑批前）
+
+1. 确认 Chrome MCP 已连接（`tabs > 0`），否则停止。
+2. 打开并登录 BOSS 直聘账号，确保 cookie 生效。
+3. 读取 `internship-prefs.md`（关键词、城市、过滤规则、notion_db_id）。
+4. 若 Notion 数据库缺字段，先确保存在：`JD摘要`、`JD原文`。
+5. 本轮设置小批次（建议每批 3-5 条），每批落盘后再继续下一批。
+
 ## Search Workflow
 
 ### 1. Navigate to BOSS直聘
