@@ -100,6 +100,10 @@ Delete entries where JD is empty after fetching.
 **tags** — match against:
 `Python LangChain LangGraph RAG LLM Agent MCP FastAPI React TypeScript Rust Go Docker K8s 向量数据库 微调 LoRA Dify Coze OpenAI Claude Qwen 多模态 强化学习 RLHF 自动驾驶`
 
+**JD写入规则（已更新）**：
+- 不再生成 `jd_summary`
+- 将抓到的 JD 原文完整写入 `jd_full`（不做摘要、不截断）
+
 **jd_quality**: DO NOT rate inline. Set `jd_quality: ""` as placeholder during collection.
 After all JDs are collected, run jd-rater in batch (see §JD Rating below).
 
@@ -209,7 +213,7 @@ Use `reset` when: duplicate entries exist, DB is out of sync, or after manual DB
 | `tags` | `技术标签` | multi_select |
 | `url` | `链接` | url |
 | `collected_at` | `收录日期` | date |
-| `jd_summary` | `JD摘要` | rich_text |
+| `jd_full` | `JD摘要`（使用原文前2000字符） | rich_text |
 
 ### Trigger rules
 
