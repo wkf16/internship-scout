@@ -10,18 +10,12 @@ description: Search BOSS直聘 for non-big-tech internship positions via chrome-
 ```
 skills/internship-scout/
 ├── SKILL.md
-├── pipelines/
-│   └── scout-sync.lobster   # lobster pipeline (API→DOM→summary→rate→sync)
 ├── references/
 │   ├── schema.md            # YAML field definitions
 │   └── prefs-template.md    # Template for internship-prefs.md
 └── scripts/
-    ├── mcp_call.py                  # chrome-mcp helper (session init + single call)
-    ├── fetch_job_links.py           # API阶段：抓joblist并写入URL队列
-    ├── fetch_jd_dom.py              # DOM阶段：批次≤5抓取jd_full
-    ├── summarize_jd_deterministic.py# 30-50字摘要（无llm-task）
-    ├── rate_and_sync.sh             # 评分 + Notion 同步
-    └── notion_sync.py               # Notion upsert script
+    ├── mcp_call.py          # chrome-mcp helper (session init + single call)
+    └── notion_sync.py       # Notion upsert script
 ```
 
 **Data files** (workspace root):
@@ -99,16 +93,23 @@ Exclude:
 - **猎头/外包/派遣**
 - Any extra keywords from prefs `exclude_keywords`
 
-### 4. Fetch full JD（通过 LLM Task + Chrome MCP，批次≤5）
+### 4. Fetch full JD（Chrome MCP 实时可见流程）
 
-为防主会话上下文过长，JD 抓取改为 **llm-task 子任务执行**：
+对每个职位都按下面流程抓取，避免拿到旧接口内容：
 
-1. 每轮最多传入 5 个 job URL（硬限制）。
-2. 子任务在 Chrome MCP 已连接前提下，对每个 URL 执行：
-   - 打开详情页 `https://www.zhipin.com/job_detail/<id>.html`
-   - 读取 `.job-sec-text` 的 `innerText` 作为 `jd_full`
-3. 子任务只返回结构化结果（url, company, title, jd_full, ok/error）。
-4. 若 `jd_full` 为空，子任务内部重试一次；仍为空则标记失败，不写入正文。
+1. `chrome_navigate` 到详情页：
+   `https://www.zhipin.com/job_detail/<id>.html`
+2. 在同一 tab 执行 JS 抽取实时可见 DOM：
+
+```javascript
+(() => {
+  const el = document.querySelector('.job-sec-text');
+  return el ? el.innerText : '';
+})()
+```
+
+3. 若返回为空，判定为“页面未加载完成/风控差异视图/选择器失效”，该条目标记为失败并重试一次。
+4. 二次仍为空才丢弃该条目。
 
 ### 5. Tag & score
 
@@ -119,14 +120,14 @@ Exclude:
 - `jd_full`：保存完整 JD 原文（不做摘要、不截断）
 - `jd_summary`：30-50字摘要（便于列表浏览与筛选）
 
-`jd_summary` 生成流程（llm-task）：
-1. 用 llm-task 对新抓取到的 `jd_full` 批量生成摘要。
-2. 输出要求：每条 30-50 字中文、信息密度高、禁止模板词开头。
+`jd_summary` 生成流程（sessions_spawn 轻隔离版）：
+1. 使用 `sessions_spawn` 启动独立子Agent，仅输入 `jd_full`。
+2. 子Agent只输出一句 30-50 字中文摘要（不得输出JSON以外内容）。
 3. 主流程写回 YAML：
-   - `jd_summary`: llm-task 输出摘要
+   - `jd_summary`: 子Agent摘要
    - `jd_full`: 原始全文
 
-兜底规则（llm-task失败时）：
+兜底规则（子Agent失败时）：
 - 去掉换行与多余空白后取前 50 字作为临时摘要（后续可重跑）。
 
 **jd_quality**: DO NOT rate inline. Set `jd_quality: ""` as placeholder during collection.
@@ -152,16 +153,15 @@ python3 ~/.openclaw/workspace/skills/internship-scout/scripts/dedup_check.py \
 
 字段权重：公司名 30%、岗位名 30%、JD 15%、薪资 15%、地点 10%。
 
-**After every YAML write**（链路精简）
+**After every YAML write** → run jd-rater, then Notion sync:
 
-1. llm-task：为新条目批量生成 `jd_summary`（30-50字）
-2. `jd-rater`：
 ```bash
+# 1. Rate all unrated/unclear entries
 python3 ~/.openclaw/workspace/skills/jd-rater/scripts/rate_jds.py --missing-only
-```
-3. llm-task：调用 `notion_sync.py --mode new|update|all` 同步 Notion
 
-> 目标：主会话只做编排，重操作交给 llm-task 子任务。
+# 2. Sync to Notion
+python3 ~/.openclaw/workspace/skills/internship-scout/scripts/notion_sync.py --mode new
+```
 
 ---
 
@@ -182,10 +182,6 @@ See `skills/jd-rater/SKILL.md` for full rubric and scoring details.
 ---
 
 ## Notion Sync
-
-### 执行方式：llm-task（推荐）
-
-Notion 同步通过 llm-task 子任务执行，主会话只负责调度，减少上下文占用。
 
 ### Script: `scripts/notion_sync.py`
 
