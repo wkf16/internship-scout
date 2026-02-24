@@ -100,10 +100,8 @@ Delete entries where JD is empty after fetching.
 **tags** — match against:
 `Python LangChain LangGraph RAG LLM Agent MCP FastAPI React TypeScript Rust Go Docker K8s 向量数据库 微调 LoRA Dify Coze OpenAI Claude Qwen 多模态 强化学习 RLHF 自动驾驶`
 
-**jd_quality**:
-- `good` — JD ≥200字 and ≥3 tech keywords
-- `unclear` — short or vague
-- `skip` — non-tech / outsourcing / education barrier (硕士/博士 required; 985/211 only if user's education is below that)
+**jd_quality**: DO NOT rate inline. Set `jd_quality: ""` as placeholder during collection.
+After all JDs are collected, run jd-rater in batch (see §JD Rating below).
 
 ### 6. Write YAML
 
@@ -125,11 +123,31 @@ python3 ~/.openclaw/workspace/skills/internship-scout/scripts/dedup_check.py \
 
 字段权重：公司名 30%、岗位名 30%、JD 15%、薪资 15%、地点 10%。
 
-**After every YAML write** → if Notion sync is enabled, immediately run:
+**After every YAML write** → run jd-rater, then Notion sync:
 
 ```bash
+# 1. Rate all unrated/unclear entries
+python3 ~/.openclaw/workspace/skills/jd-rater/scripts/rate_jds.py --missing-only
+
+# 2. Sync to Notion
 python3 ~/.openclaw/workspace/skills/internship-scout/scripts/notion_sync.py --mode new
 ```
+
+---
+
+## JD Rating
+
+**Never rate inline during collection.** Always use jd-rater after JDs are collected.
+
+```bash
+# Re-rate all entries
+python3 ~/.openclaw/workspace/skills/jd-rater/scripts/rate_jds.py
+
+# Dry-run first to preview changes
+python3 ~/.openclaw/workspace/skills/jd-rater/scripts/rate_jds.py --dry-run
+```
+
+See `skills/jd-rater/SKILL.md` for full rubric and scoring details.
 
 ---
 
