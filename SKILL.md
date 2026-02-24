@@ -15,9 +15,35 @@ See `references/schema.md` for the full YAML schema.
 
 ---
 
-## Session Start — Ask User
+## Session Start — Two-Step Setup
 
-At the beginning of every internship-scout session, ask:
+### Step 1: 求职偏好（首次使用时）
+
+Check if `~/.openclaw/workspace/internship-prefs.md` exists:
+
+```bash
+test -f ~/.openclaw/workspace/internship-prefs.md && echo "exists" || echo "missing"
+```
+
+**If missing**, ask the user the following questions one by one, then create the file:
+
+1. 目标城市（可多选，如：上海、北京、杭州、深圳，或"全国"）
+2. 期望日薪下限（元/天，如 200）
+3. 公司规模偏好（20-99人 / 100-499人 / 都可以）
+4. 融资阶段偏好（天使轮/A轮/B轮以上/不限）
+5. 岗位方向关键词（如：Agent开发、LLM推理、全栈、算法）
+6. 技术栈偏好（如：Python、LangChain、RAG，用于优先排序）
+7. 排除关键词（如：外包、销售、财务，会追加到过滤规则）
+8. 学历情况（本科在读 / 硕士在读 / 其他）——用于过滤要求更高学历的岗位
+9. 可实习时长（如：3个月、6个月、长期）
+
+Write to `~/.openclaw/workspace/internship-prefs.md` using the template in `references/prefs-template.md`.
+
+**If exists**, load it silently and apply preferences throughout the session. No need to ask again unless user says "更新偏好" or "重置偏好".
+
+### Step 2: Notion 同步
+
+Ask:
 
 > 是否开启 Notion 同步？开启后每次更新 YAML 都会自动同步到 Notion 数据库。
 
@@ -48,7 +74,18 @@ Every chrome-mcp call requires a fresh session-id. Use the helper script:
 python3 ~/.openclaw/workspace/skills/internship-scout/scripts/mcp_call.py <tool_name> '<json_args>'
 ```
 
-### 2. Search via BOSS直聘 internal API
+### 2. Load preferences
+
+Read `~/.openclaw/workspace/internship-prefs.md` and extract:
+- `target_cities` → map to BOSS city codes for API calls
+- `min_daily_salary` → override default 150元/天 threshold
+- `scale_preference` → which `scale` codes to query
+- `job_keywords` → use as `query` param in API
+- `exclude_keywords` → append to filter rules
+- `education` → if "本科在读", add 硕士/博士/985/211 to skip triggers
+- `preferred_tags` → used for sorting (entries matching more preferred tags rank higher)
+
+### 3. Search via BOSS直聘 internal API
 
 Navigate to a BOSS直聘 job search page first (to get cookies), then fetch:
 
