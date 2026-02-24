@@ -107,7 +107,23 @@ Delete entries where JD is empty after fetching.
 
 ### 6. Write YAML
 
-Deduplicate by `company + title`. Append new entries. See `references/schema.md` for all fields.
+**Before appending**, run dedup check to avoid overwriting with stale data:
+
+```bash
+python3 ~/.openclaw/workspace/skills/internship-scout/scripts/dedup_check.py \
+  --company "<company>" \
+  --title   "<title>" \
+  --salary  "<salary>" \
+  --location "<location>" \
+  --jd      "<jd_full 前300字>" \
+  --threshold 0.25
+```
+
+- Exit 0 → 找到疑似重复，输出 `index=N`，**覆盖更新**该条目而非新增
+- Exit 1 → 无重复，正常 append
+- `--threshold` 默认 0.25（距离率），调小更严格，调大更宽松
+
+字段权重：公司名 30%、岗位名 30%、JD 15%、薪资 15%、地点 10%。
 
 **After every YAML write** → if Notion sync is enabled, immediately run:
 
