@@ -110,11 +110,17 @@ Exclude:
 
 **JD写入规则（已更新）**：
 - `jd_full`：保存完整 JD 原文（不做摘要、不截断）
-- `jd_summary`：基于 `jd_full` 生成 20 字摘要（便于列表浏览）
+- `jd_summary`：30-50字摘要（便于列表浏览与筛选）
 
-20 字摘要生成规则：
-- 去掉换行与多余空白后取前 20 个中文字符（英文按字符计）
-- 不加省略号，不改写语义，仅做压缩截取
+`jd_summary` 生成流程（sessions_spawn 轻隔离版）：
+1. 使用 `sessions_spawn` 启动独立子Agent，仅输入 `jd_full`。
+2. 子Agent只输出一句 30-50 字中文摘要（不得输出JSON以外内容）。
+3. 主流程写回 YAML：
+   - `jd_summary`: 子Agent摘要
+   - `jd_full`: 原始全文
+
+兜底规则（子Agent失败时）：
+- 去掉换行与多余空白后取前 50 字作为临时摘要（后续可重跑）。
 
 **jd_quality**: DO NOT rate inline. Set `jd_quality: ""` as placeholder during collection.
 After all JDs are collected, run jd-rater in batch (see §JD Rating below).
@@ -225,8 +231,8 @@ Use `reset` when: duplicate entries exist, DB is out of sync, or after manual DB
 | `tags` | `技术标签` | multi_select |
 | `url` | `链接` | url |
 | `collected_at` | `收录日期` | date |
-| `jd_summary` | `JD摘要`（20字压缩） | rich_text |
-| `jd_full` | `JD原文`（可选；若库里有该字段就同步） | rich_text |
+| `jd_summary` | `JD摘要`（30-50字） | rich_text |
+| `jd_full` | `JD原文`（完整文本） | rich_text |
 
 ### Trigger rules
 

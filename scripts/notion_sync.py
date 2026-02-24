@@ -63,6 +63,7 @@ FIELD_MAP = {
     "url":           ("链接",     "url"),
     "collected_at":  ("收录日期", "date"),
     "jd_summary":    ("JD摘要",   "rich_text"),
+    "jd_full":       ("JD原文",   "rich_text"),
 }
 
 # ── DB ID helpers ─────────────────────────────────────────────────────────────
@@ -186,7 +187,7 @@ def parse_yaml(path: Path) -> list[dict]:
             e["jd_full"] = str(legacy) if legacy is not None else ""
         if not e.get("jd_summary"):
             txt = " ".join(str(e.get("jd_full", "")).split())
-            e["jd_summary"] = txt[:20]
+            e["jd_summary"] = txt[:50]
         entries.append(e)
     return entries
 

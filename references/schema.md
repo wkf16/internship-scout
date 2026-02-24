@@ -16,7 +16,7 @@ internships:
       - Agent开发
       - LLM
       - 转正机会
-    jd_summary: "在团队指导下参与AI A"
+    jd_summary: "在团队指导下参与AI Agent算法研发与评测，支持数据分析"
     jd_full: "（完整JD原文，不做摘要）"
     url: "https://www.zhipin.com/job_detail/xxx.html"
     source: "boss直聘"
@@ -30,7 +30,7 @@ internships:
 
 - `salary`: keep as raw string from platform, e.g. "20-30K·13薪" or "200元/天"
 - `tags`: array of short strings, 3-10 items
-- `jd_summary`: 20字压缩摘要（从 `jd_full` 清洗后截取前20字符）
+- `jd_summary`: 30-50字摘要（优先由轻隔离总结子Agent生成）
 - `jd_full`: full raw text, can be long; do not summarize/truncate when collecting
 - `company_size`: raw string from BOSS, e.g. "20-99人" / "100-499人"
 - `funding_stage`: raw string from BOSS, e.g. "A轮" / "未融资" / "天使轮"
