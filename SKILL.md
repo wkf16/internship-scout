@@ -10,12 +10,18 @@ description: Search BOSS直聘 for non-big-tech internship positions via chrome-
 ```
 skills/internship-scout/
 ├── SKILL.md
+├── pipelines/
+│   └── scout-sync.lobster   # lobster pipeline (API→DOM→summary→rate→sync)
 ├── references/
 │   ├── schema.md            # YAML field definitions
 │   └── prefs-template.md    # Template for internship-prefs.md
 └── scripts/
-    ├── mcp_call.py          # chrome-mcp helper (session init + single call)
-    └── notion_sync.py       # Notion upsert script
+    ├── mcp_call.py                  # chrome-mcp helper (session init + single call)
+    ├── fetch_job_links.py           # API阶段：抓joblist并写入URL队列
+    ├── fetch_jd_dom.py              # DOM阶段：批次≤5抓取jd_full
+    ├── summarize_jd_deterministic.py# 30-50字摘要（无llm-task）
+    ├── rate_and_sync.sh             # 评分 + Notion 同步
+    └── notion_sync.py               # Notion upsert script
 ```
 
 **Data files** (workspace root):
