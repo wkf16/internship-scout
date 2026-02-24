@@ -62,7 +62,7 @@ FIELD_MAP = {
     "tags":          ("技术标签", "multi_select"),
     "url":           ("链接",     "url"),
     "collected_at":  ("收录日期", "date"),
-    "jd_full":       ("JD摘要",   "rich_text"),
+    "jd_summary":    ("JD摘要",   "rich_text"),
 }
 
 # ── DB ID helpers ─────────────────────────────────────────────────────────────
@@ -170,7 +170,7 @@ def parse_yaml(path: Path) -> list[dict]:
             continue
         e = {}
         for f in ["company", "salary", "location", "company_size",
-                  "funding_stage", "jd_full", "url", "source", "status",
+                  "funding_stage", "jd_summary", "jd_full", "url", "source", "status",
                   "jd_quality", "collected_at", "notion_page_id"]:
             val = item.get(f, "")
             e[f] = str(val) if val is not None else ""
@@ -184,6 +184,9 @@ def parse_yaml(path: Path) -> list[dict]:
         if not e.get("jd_full"):
             legacy = item.get("jd_summary", "")
             e["jd_full"] = str(legacy) if legacy is not None else ""
+        if not e.get("jd_summary"):
+            txt = " ".join(str(e.get("jd_full", "")).split())
+            e["jd_summary"] = txt[:20]
         entries.append(e)
     return entries
 

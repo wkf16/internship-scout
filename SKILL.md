@@ -85,15 +85,23 @@ Exclude:
 - **猎头/外包/派遣**
 - Any extra keywords from prefs `exclude_keywords`
 
-### 4. Fetch full JD
+### 4. Fetch full JD（Chrome MCP 实时可见流程）
 
-Navigate to `https://www.zhipin.com/job_detail/<id>.html`, extract:
+对每个职位都按下面流程抓取，避免拿到旧接口内容：
+
+1. `chrome_navigate` 到详情页：
+   `https://www.zhipin.com/job_detail/<id>.html`
+2. 在同一 tab 执行 JS 抽取实时可见 DOM：
 
 ```javascript
-document.querySelector(".job-sec-text")?.innerText
+(() => {
+  const el = document.querySelector('.job-sec-text');
+  return el ? el.innerText : '';
+})()
 ```
 
-Delete entries where JD is empty after fetching.
+3. 若返回为空，判定为“页面未加载完成/风控差异视图/选择器失效”，该条目标记为失败并重试一次。
+4. 二次仍为空才丢弃该条目。
 
 ### 5. Tag & score
 
@@ -101,8 +109,12 @@ Delete entries where JD is empty after fetching.
 `Python LangChain LangGraph RAG LLM Agent MCP FastAPI React TypeScript Rust Go Docker K8s 向量数据库 微调 LoRA Dify Coze OpenAI Claude Qwen 多模态 强化学习 RLHF 自动驾驶`
 
 **JD写入规则（已更新）**：
-- 不再生成 `jd_summary`
-- 将抓到的 JD 原文完整写入 `jd_full`（不做摘要、不截断）
+- `jd_full`：保存完整 JD 原文（不做摘要、不截断）
+- `jd_summary`：基于 `jd_full` 生成 20 字摘要（便于列表浏览）
+
+20 字摘要生成规则：
+- 去掉换行与多余空白后取前 20 个中文字符（英文按字符计）
+- 不加省略号，不改写语义，仅做压缩截取
 
 **jd_quality**: DO NOT rate inline. Set `jd_quality: ""` as placeholder during collection.
 After all JDs are collected, run jd-rater in batch (see §JD Rating below).
@@ -213,7 +225,8 @@ Use `reset` when: duplicate entries exist, DB is out of sync, or after manual DB
 | `tags` | `技术标签` | multi_select |
 | `url` | `链接` | url |
 | `collected_at` | `收录日期` | date |
-| `jd_full` | `JD摘要`（使用原文前2000字符） | rich_text |
+| `jd_summary` | `JD摘要`（20字压缩） | rich_text |
+| `jd_full` | `JD原文`（可选；若库里有该字段就同步） | rich_text |
 
 ### Trigger rules
 
