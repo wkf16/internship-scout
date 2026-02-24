@@ -137,14 +137,18 @@ python3 ~/.openclaw/workspace/skills/internship-scout/scripts/notion_sync.py --m
 
 ### Script: `scripts/notion_sync.py`
 
+Requires: `pip install aiohttp`
+Concurrency: 3 parallel requests (matches Notion's ~3 req/s limit). Handles 429 automatically via `Retry-After` header.
+
 ```
 Inputs
   --yaml     Path to internships.yaml (default: workspace/internships.yaml)
   --db-id    Notion DB ID or share URL. Falls back to notion_db_id in internship-prefs.md.
              If missing: prompts user (UUID / share URL / 'new' to create)
   --mode     new    — POST entries where notion_page_id is empty  [default]
-             update — PATCH entries that already have notion_page_id
-             all    — both
+             update — PATCH entries that already have notion_page_id (full overwrite)
+             all    — new + update
+             reset  — archive all DB pages → clear YAML notion_page_ids → POST all fresh
   --filter   Only sync entries whose company name contains this string
   --dry-run  Preview without API calls
 
@@ -161,7 +165,19 @@ Outputs
 3. Prompt user → accept UUID / share URL / `new`
    - `new` → creates database under ヤチヨ 元Agent, saves ID to prefs
 
-### Field mapping (full overwrite on update)
+### reset mode — step by step
+
+```
+Step 1: query all page IDs from DB
+Step 2: async archive all pages (concurrency=3, handles 429)
+Step 3: clear all notion_page_id fields in YAML
+Step 4: async POST all entries fresh (concurrency=3)
+Step 5: write returned page IDs back to YAML
+```
+
+Use `reset` when: duplicate entries exist, DB is out of sync, or after manual DB edits.
+
+### Field mapping (full overwrite on update/reset)
 
 | YAML field | Notion property | Type |
 |---|---|---|
@@ -184,6 +200,7 @@ Outputs
 | New entries added | `--mode new` |
 | Status / jd_quality changed | `--mode update` |
 | Full re-sync | `--mode all` |
+| DB has duplicates / out of sync | `--mode reset` |
 | Single company | `--filter "深度赋智" --mode all` |
 
 ---
