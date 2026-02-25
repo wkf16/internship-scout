@@ -58,13 +58,26 @@ def parse_prefs(path: Path):
     scales    = parse_list(txt, r'公司规模[^:：]*[:：]\s*(.+)', '20-99人')
     extra_exc = parse_list(txt, r'排除关键词[^:：]*[:：]\s*(.+)', '')
 
-    # 大厂排除：从 prefs 读取，留空则用默认值
+    # 大厂排除：从 prefs 读取
+    # - 留空 → 使用内置默认列表
+    # - 填具体公司名 → 只排除填写的公司
+    # - 填「无」或「不限」→ 不排除任何公司
     big_tech_raw = parse_list(txt, r'大厂排除[^:：]*[:：]\s*(.+)', '')
-    big_tech = {x.lower() for x in big_tech_raw} if big_tech_raw else DEFAULT_BIG_TECH
+    if not big_tech_raw:
+        big_tech = DEFAULT_BIG_TECH
+    elif set(big_tech_raw) & {'无', '不限'}:
+        big_tech = set()
+    else:
+        big_tech = {x.lower() for x in big_tech_raw}
 
-    # 非技术岗排除：从 prefs 读取，留空则用默认值
+    # 非技术岗排除：从 prefs 读取，同上逻辑
     non_tech_raw = parse_list(txt, r'非技术岗排除[^:：]*[:：]\s*(.+)', '')
-    non_tech = {x.lower() for x in non_tech_raw} if non_tech_raw else DEFAULT_NON_TECH
+    if not non_tech_raw:
+        non_tech = DEFAULT_NON_TECH
+    elif set(non_tech_raw) & {'无', '不限'}:
+        non_tech = set()
+    else:
+        non_tech = {x.lower() for x in non_tech_raw}
 
     city_codes  = [CITY_CODES.get(c, '100010000') for c in cities]
     scale_codes = [SCALE_CODES[s] for s in scales if s in SCALE_CODES] or ['302']

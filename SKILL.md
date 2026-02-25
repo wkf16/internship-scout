@@ -78,7 +78,13 @@ python3 skills/internship-scout/scripts/fetch_job_links.py \
   --yaml internships.yaml
 ```
 
-从 `internship-prefs.md` 读取搜索词、城市、规模等偏好，调用 BOSS直聘内部 API 抓取职位列表。只写结构字段（title/company/salary/location/url 等），不含 JD 正文。过滤大厂、非技术岗、低薪、已收录 URL。
+从 `internship-prefs.md` 读取搜索词、城市、规模等偏好，调用 BOSS直聘内部 API 抓取职位列表。只写结构字段（title/company/salary/location/url 等），不含 JD 正文。
+
+过滤规则（均可在 prefs 中配置）：
+- **大厂排除**：留空 → 使用内置默认列表；填公司名 → 只排除指定公司；填「无」或「不限」→ 关闭大厂过滤
+- **非技术岗排除**：同上逻辑，留空使用默认（销售/运营/HR等）
+- **低薪过滤**：日薪低于 `日薪下限` 的条目自动跳过
+- **去重**：已收录 URL 自动跳过
 
 ---
 
