@@ -86,7 +86,7 @@ Pipeline 共 7 步，关键设计：
 | 步骤 | 执行方式 | 说明 |
 |---|---|---|
 | fetch-links | shell | API 抓列表，只写结构字段，不含 JD 正文 |
-| fetch-jd-dom | shell + **failFast** | DOM 抓 JD 原文；空 JD → exit 1 硬停 |
+| fetch-jd-dom | shell + **failFast** | osascript DOM 抓 JD 原文（带换行）；空 JD → exit 1 硬停 |
 | extract-prep | shell | 把每条 jd_full 写成独立 txt |
 | **extract-fields** | **agentTurn** | 每次只看一条 JD，输出 jd_summary + tags |
 | merge-extracted | shell + 幻觉检测 | 关键词回查原文，校验后写回 YAML |
