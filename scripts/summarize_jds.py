@@ -35,30 +35,62 @@ from pathlib import Path
 
 import yaml
 
-WORKSPACE = Path('/Users/okonfu/.openclaw/workspace')
+WORKSPACE = Path.home() / '.openclaw/workspace'
 YAML_PATH = WORKSPACE / 'internships.yaml'
 BATCH_SIZE = 5
 
-SYSTEM_PROMPT = """你是一个 JD 分析助手。只输出 JSON，不使用任何工具，不联网，不查询外部信息。
+SYSTEM_PROMPT = """你是一个 JD 质量评分助手。只输出 JSON，不使用任何工具，不联网，不查询外部信息。
 
-对每条 JD，输出：
-- jd_summary: 30-50字中文摘要，只描述核心职责和技术要求，不得出现原文中没有的词
-- tags: 技术栈标签数组，3-8个，只从原文提取，候选包括但不限于：
+对每条 JD，按以下步骤处理：
+
+Step 1 — 阅读 JD 原文全文（不要基于摘要评分）
+
+Step 2 — 按三个维度各打 1-3 分：
+
+  [clarity 描述清晰度] 职责是否具体、可执行，而非套话
+    3 = 职责明确，能判断每天做什么
+    2 = 有方向但部分笼统
+    1 = 全是"参与/协助/配合"等套话
+
+  [tech_stack 技术栈明确度] 是否点名具体技术/工具/框架
+    3 = 有≥3个具体技术名称（Python/LangChain/RAG/CUDA/PyTorch等）
+    2 = 有1-2个具体技术名称
+    1 = 只有泛称（AI/大模型/人工智能）或无技术要求
+
+  [role_signal 岗位匹配信号] 是否是真实技术/研究岗
+    3 = 明确技术/算法/研究岗
+    2 = 技术+产品混合岗
+    1 = 非技术岗/外包/纯销售
+
+Step 3 — 总分映射等级（total = clarity + tech_stack + role_signal）：
+  8-9分 → A
+  6-7分 → B
+  4-5分 → C
+  3分   → D
+  含"外包/销售/无任何技术要求"任一特征 → F
+
+Step 4 — 写 jd_summary（30-50字，基于原文，不基于评分结果）
+
+Step 5 — 提取 tags（3-8个，只从原文提取具体技术名称，候选包括但不限于：
   Python, Java, C++, Go, Rust, JavaScript, TypeScript,
   LLM, Agent开发, RAG, LangChain, LangGraph, AutoGen, MCP,
   大模型, 多模态, 强化学习, 微调, RLHF, 推理优化,
   PyTorch, TensorFlow, CUDA, 分布式训练,
   后端开发, 全栈开发, 前端开发, 数据分析, 数据标注,
-  NLP, CV, 自动驾驶, 语音识别, TTS,
-  转正机会, 远程, 海外
-- jd_quality: ABCD 四级
-  A: JD≥200字，技术关键词≥5个，职责清晰，有明确技术栈
-  B: JD≥100字，技术关键词≥3个，职责基本清晰
-  C: JD偏短或技术描述模糊，关键词<3个
-  D: 非技术岗/外包/纯销售/学历门槛过高/内容严重不足
+  NLP, CV, 自动驾驶, 语音识别, TTS, SQL,
+  转正机会, 远程, 海外）
 
 输出格式（严格 JSON 数组，顺序与输入一致）：
-[{"id": 0, "jd_summary": "...", "tags": [...], "jd_quality": "A"}, ...]
+[{
+  "id": 0,
+  "clarity": 3,
+  "tech_stack": 3,
+  "role_signal": 2,
+  "jd_score": 8,
+  "jd_quality": "A",
+  "jd_summary": "...",
+  "tags": [...]
+}, ...]
 
 只输出 JSON，不要任何解释。"""
 
@@ -125,16 +157,19 @@ def apply_result(entries: list, batch_indices: list[int], results: list[dict]) -
         summary = (item.get('jd_summary') or '').strip()
         tags = item.get('tags') or []
         quality = (item.get('jd_quality') or '').strip().upper()
+        score = item.get('jd_score')
 
         if summary and len(summary) >= 10:
             entry['jd_summary'] = summary
         if tags and isinstance(tags, list):
             entry['tags'] = [str(t).strip() for t in tags if t]
-        if quality in ('A', 'B', 'C', 'D'):
+        if quality in ('A', 'B', 'C', 'D', 'F'):
             entry['jd_quality'] = quality
             updated += 1
+        if isinstance(score, int) and 3 <= score <= 9:
+            entry['jd_score'] = score
 
-        print(f"  [{batch_indices[idx_in_batch]}] {entry.get('company')} | {quality} | {summary[:40]}")
+        print(f"  [{batch_indices[idx_in_batch]}] {entry.get('company')} | {quality}({score}) | {summary[:40]}")
     return updated
 
 
@@ -212,12 +247,9 @@ def main():
     ap.add_argument('--yaml', type=Path, default=YAML_PATH)
     ap.add_argument('--limit', type=int, default=0, help='Max entries to process (0=all)')
     ap.add_argument('--refetch', action='store_true', help='Re-process entries that already have summary')
-    ap.add_argument('--batch-size', type=int, default=BATCH_SIZE)
     ap.add_argument('--list-pending', action='store_true')
-    ap.add_argument('--dry-run', action='store_true', help='Print prompts without spawning')
-    ap.add_argument('--batch', type=int, default=None, help='Only process this batch index (0-based, for --dry-run)')
-    # internal: write-result mode (used by main session after receiving subagent output)
-    ap.add_argument('--write-result', type=str, help='JSON string to write back for --batch N')
+    ap.add_argument('--dry-run', action='store_true', help='Print prompt without spawning')
+    ap.add_argument('--write-result', type=str, help='JSON string to write back results')
     args = ap.parse_args()
 
     data, entries = load_data(args.yaml)
@@ -236,12 +268,7 @@ def main():
 
     # ── write-result mode ──
     if args.write_result is not None:
-        if args.batch is None:
-            print('--write-result requires --batch N', file=sys.stderr)
-            sys.exit(1)
-        batch_start = args.batch * args.batch_size
-        batch_pairs = pending[batch_start: batch_start + args.batch_size]
-        batch_indices = [i for i, _ in batch_pairs]
+        batch_indices = [i for i, _ in pending]
         results = parse_result(args.write_result)
         if not results:
             print('Failed to parse result JSON', file=sys.stderr)
@@ -250,27 +277,37 @@ def main():
         save_data(args.yaml, data, entries)
         return
 
-    # ── dry-run: print prompt for one batch ──
+    # ── dry-run: print full prompt ──
     if args.dry_run:
-        b = args.batch or 0
-        batch_start = b * args.batch_size
-        batch_entries = [e for _, e in pending[batch_start: batch_start + args.batch_size]]
+        batch_entries = [e for _, e in pending]
         print(build_prompt(batch_entries))
         return
 
-    # ── main loop: spawn batches serially ──
-    # NOTE: sessions_spawn is blocked on HTTP /tools/invoke by default.
-    # This script handles prompt building and result writing only.
-    # The main session (agent) is responsible for spawning subagents and
-    # calling --write-result after each batch completes.
-    #
-    # To run the full pipeline, ask the main agent to:
-    #   1. python3 scripts/summarize_jds.py --list-pending
-    #   2. For each batch: --dry-run --batch N  →  spawn subagent  →  --write-result '<json>' --batch N
-    print('Use --list-pending to see pending entries.')
-    print('Use --dry-run --batch N to get the prompt for batch N.')
-    print('Use --write-result \'<json>\' --batch N to write back results.')
-    print('The main agent session handles spawning subagents between these steps.')
+    # ── main loop: single batch, one subagent ──
+    if not pending:
+        print('No pending entries.')
+        return
+
+    total = len(pending)
+    batch_indices = [i for i, _ in pending]
+    batch_entries = [e for _, e in pending]
+
+    print(f'Total pending: {total} | Spawning single subagent for all entries.')
+    prompt = build_prompt(batch_entries)
+
+    result_text = spawn_and_wait(prompt, label='summarize-jds')
+    if not result_text:
+        print('Subagent failed or timed out.', file=sys.stderr)
+        sys.exit(1)
+
+    results = parse_result(result_text)
+    if not results:
+        print(f'Unparseable JSON:\n{result_text[:300]}', file=sys.stderr)
+        sys.exit(1)
+
+    updated = apply_result(entries, batch_indices, results)
+    save_data(args.yaml, data, entries)
+    print(f'\nDone. Updated {updated}/{total}')
 
 
 if __name__ == '__main__':

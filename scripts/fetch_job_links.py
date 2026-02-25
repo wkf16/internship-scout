@@ -3,19 +3,24 @@
 fetch_job_links.py — 通过 BOSS直聘内部 API 抓取职位列表，写入 internships.yaml。
 只写结构字段（title/company/salary/url 等），不写 jd_full/jd_summary（留给后续节点）。
 """
-import argparse, json, re, subprocess, sys
+import argparse, json, re, subprocess
 from datetime import date
 from pathlib import Path
 import yaml
 
-ROOT = Path('/Users/okonfu/.openclaw/workspace')
+ROOT = Path.home() / '.openclaw/workspace'
 MCP  = ROOT / 'skills/internship-scout/scripts/mcp_call.py'
 
-BIG_TECH = {'字节','抖音','tiktok','阿里','淘宝','天猫','腾讯','百度','美团','京东',
-            '华为','小米','网易','bilibili','哔哩','滴滴','快手','拼多多','蚂蚁',
-            '微软','谷歌','google','microsoft','apple','苹果'}
+# 默认兜底值，优先从 internship-prefs.md 读取
+DEFAULT_BIG_TECH = {
+    '字节', '抖音', 'tiktok', '阿里', '淘宝', '天猫', '腾讯', '百度', '美团', '京东',
+    '华为', '小米', '网易', 'bilibili', '哔哩', '滴滴', '快手', '拼多多', '蚂蚁',
+    '微软', '谷歌', 'google', 'microsoft', 'apple', '苹果',
+}
 
-NON_TECH  = {'销售','运营','市场','客服','行政','财务','人事','hr','猎头','外包','派遣'}
+DEFAULT_NON_TECH = {
+    '销售', '运营', '市场', '客服', '行政', '财务', '人事', 'hr', '猎头', '外包', '派遣',
+}
 
 CITY_CODES = {
     '全国': '100010000', '北京': '101010100', '上海': '101020100',
@@ -29,41 +34,56 @@ SCALE_CODES = {'20-99人': '302', '100-499人': '303'}
 def run_mcp(tool, args_dict):
     out = subprocess.check_output(
         ['python3', str(MCP), tool, json.dumps(args_dict, ensure_ascii=False)],
-        text=True, stderr=subprocess.DEVNULL
+        text=True, stderr=subprocess.DEVNULL,
     )
     return out.strip()
 
 
+def parse_list(txt: str, pattern: str, default: str) -> list[str]:
+    m = re.search(pattern, txt)
+    raw = m.group(1).strip() if m else default
+    return [x.strip() for x in re.split(r'[,，、]', raw) if x.strip()]
+
+
 def parse_prefs(path: Path):
     txt = path.read_text(encoding='utf-8')
-    def find(pattern, default):
+
+    def find(pattern, default=''):
         m = re.search(pattern, txt)
         return m.group(1).strip() if m else default
 
-    queries   = [x.strip() for x in find(r'搜索词[^:：]*[:：]\s*(.+)', 'agent').split(',') if x.strip()]
-    cities    = [x.strip() for x in find(r'目标城市[^:：]*[:：]\s*(.+)', '全国').split('/') if x.strip()]
+    queries   = parse_list(txt, r'搜索词[^:：]*[:：]\s*(.+)', 'agent')
+    cities    = parse_list(txt, r'目标城市[^:：]*[:：]\s*(.+)', '全国')
     min_sal   = int(find(r'日薪下限[^:：]*[:：]\s*(\d+)', '150'))
-    scales    = [x.strip() for x in find(r'公司规模[^:：]*[:：]\s*(.+)', '20-99人').split('/') if x.strip()]
-    extra_exc = [x.strip() for x in find(r'排除关键词[^:：]*[:：]\s*(.+)', '').split(',') if x.strip()]
+    scales    = parse_list(txt, r'公司规模[^:：]*[:：]\s*(.+)', '20-99人')
+    extra_exc = parse_list(txt, r'排除关键词[^:：]*[:：]\s*(.+)', '')
+
+    # 大厂排除：从 prefs 读取，留空则用默认值
+    big_tech_raw = parse_list(txt, r'大厂排除[^:：]*[:：]\s*(.+)', '')
+    big_tech = {x.lower() for x in big_tech_raw} if big_tech_raw else DEFAULT_BIG_TECH
+
+    # 非技术岗排除：从 prefs 读取，留空则用默认值
+    non_tech_raw = parse_list(txt, r'非技术岗排除[^:：]*[:：]\s*(.+)', '')
+    non_tech = {x.lower() for x in non_tech_raw} if non_tech_raw else DEFAULT_NON_TECH
 
     city_codes  = [CITY_CODES.get(c, '100010000') for c in cities]
     scale_codes = [SCALE_CODES[s] for s in scales if s in SCALE_CODES] or ['302']
-    return queries, city_codes, min_sal, scale_codes, extra_exc
+    return queries, city_codes, min_sal, scale_codes, extra_exc, big_tech, non_tech
 
 
-def is_excluded(job: dict, min_sal: int, extra_exc: list) -> bool:
+def is_excluded(job: dict, min_sal: int, extra_exc: list,
+                big_tech: set, non_tech: set) -> bool:
     name    = (job.get('jobName') or '').lower()
     company = (job.get('brandName') or '').lower()
     sal_str = job.get('salaryDesc') or ''
 
-    if any(k in company for k in BIG_TECH):
+    if any(k in company for k in big_tech):
         return True
-    if any(k in name for k in NON_TECH):
+    if any(k in name for k in non_tech):
         return True
     if any(k.lower() in name or k.lower() in company for k in extra_exc):
         return True
 
-    # 薪资过滤：取下限
     m = re.search(r'(\d+)', sal_str)
     if m and int(m.group(1)) < min_sal:
         return True
@@ -94,7 +114,7 @@ def main():
     items = data if isinstance(data, list) else []
     by_url = {it.get('url'): it for it in items if isinstance(it, dict) and it.get('url')}
 
-    queries, city_codes, min_sal, scale_codes, extra_exc = parse_prefs(prefs_path)
+    queries, city_codes, min_sal, scale_codes, extra_exc, big_tech, non_tech = parse_prefs(prefs_path)
 
     # 激活 cookie
     run_mcp('chrome_navigate', {'url': 'https://www.zhipin.com/web/geek/job?query=agent&city=100010000'})
@@ -109,9 +129,9 @@ def main():
                     f"&jobType=4&scale={scale}`,{{credentials:'include'}});"
                     f"return JSON.stringify(await r.json());}})();"
                 )
-                raw  = run_mcp('chrome_javascript', {'code': js})
+                raw    = run_mcp('chrome_javascript', {'code': js})
                 data_j = extract_json(raw)
-                jobs = ((data_j.get('zpData') or {}).get('jobList') or []) if isinstance(data_j, dict) else []
+                jobs   = ((data_j.get('zpData') or {}).get('jobList') or []) if isinstance(data_j, dict) else []
 
                 for job in jobs:
                     eid = job.get('encryptJobId', '')
@@ -120,7 +140,7 @@ def main():
                     url = f'https://www.zhipin.com/job_detail/{eid}.html'
                     if url in by_url:
                         continue
-                    if is_excluded(job, min_sal, extra_exc):
+                    if is_excluded(job, min_sal, extra_exc, big_tech, non_tech):
                         continue
 
                     rec = {
@@ -135,7 +155,6 @@ def main():
                         'source':         'boss直聘',
                         'url':            url,
                         'status':         'pending',
-                        # 以下字段留空，由后续节点填写
                         'jd_full':        '',
                         'jd_summary':     '',
                         'tags':           [],
