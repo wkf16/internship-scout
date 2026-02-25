@@ -3,7 +3,7 @@
 fetch_job_links.py — 通过 BOSS直聘内部 API 抓取职位列表，写入 internships.yaml。
 只写结构字段（title/company/salary/url 等），不写 jd_full/jd_summary（留给后续节点）。
 """
-import argparse, json, re, subprocess
+import argparse, json, re, subprocess, time, random
 from datetime import date
 from pathlib import Path
 import yaml
@@ -164,6 +164,11 @@ def main():
                     items.append(rec)
                     by_url[url] = rec
                     added += 1
+
+                # 每次搜索之间随机延迟 1-3s，避免触发风控
+                delay = random.uniform(1.0, 3.0)
+                print(f'  sleeping {delay:.1f}s...')
+                time.sleep(delay)
 
     yaml_path.write_text(yaml.dump(items, allow_unicode=True, sort_keys=False), encoding='utf-8')
     print(f'added={added} total={len(items)}')
